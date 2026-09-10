@@ -1,6 +1,6 @@
 {
   "name": "dsh-personal-workflow",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "laituli 个人工作流插件：把「自定义 dsh / dsh 插件开发的工作流」以 skill 形式热注入给 agent（装载即注入，卸载即移除）。",
   "type": "module",
   "main": "lib/index.js",
