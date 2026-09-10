@@ -83,3 +83,22 @@ node scripts\e2e-restore-headless.mjs   # 免 LLM 的隔离端到端（按仓内
 - **没有工具、没有斜杠命令**（明确结论）；系统提示里的 `plugin:task-board` 段受 `announceToAgent` 控制，默认 false；
 - 因此：进度跟踪要么由**真实执行**驱动（跑任务 → 结算），要么**由人用 UI**操作；
 - 需要程序化读取时，可自备 HTTP：`GET $env:DSH_WEB_URL/api/task-board/state`，并带上 `Origin: $env:DSH_WEB_URL`。
+
+## GitHub 网络抖动处置（刚性：完成 git 动作再往下做）
+
+> 前置事实：这类抖动常发生在 **LLM 正常、Git 不通**时（CN→GitHub 链路问题）。
+> 原则：**不降级、不跳过** —— 只有 git 动作真正完成（push/pull 成功）才继续后续步骤。
+
+处置顺序（逐步升级，但都在“直到成功”的框架内）：
+
+1. **重试而非放弃**：`git push` 失败先原样重试，退避 1s→2s→4s→…→8s 封顶（与 issue 要求的“5 次重试、末次上限 8s”对齐，并做成可配置）；
+2. **抬高时限**：`git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=300 push`（慢链路不要被默认低速率判死），必要时用 `--no-thin`；
+3. **缩小单次提交集**：把大提交拆小、或分批 push（`git push origin <sha>:main` 逐个推进），降低单次传输体积；
+4. **换传输/通道**：`ssh` 远端（22/443）替代 https；或走代理/镜像（CN 镜像源由 `dsh-stable-network` 统一管理）；
+5. **一直重试直到成功**：用 `dsh-stable-network` 的 `runStrict(label, op)` 包住 push —— 30 分钟窗口内不限次数，不放弃；仍未成功就把挂起项留在队列里（重启后仍在），**不要用“稍后再说”代替完成**。
+
+诊断（判断是链路还是凭据）：
+
+- `git ls-remote <url> HEAD`：能通说明链路 OK，问题在推送体积/时限；
+- `gh auth status`：确认凭据有效性；
+- 记录失败时的 `http.lowSpeedTime`/超时数值与已推送提交数，便于下次直接跳到有效手段。
