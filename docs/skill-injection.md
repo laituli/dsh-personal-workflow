@@ -20,6 +20,15 @@
 provider 提供的定义（`validateDefinition`）字段：`name`、`description`、`whenToUse?`、`invocation`、`source`、`provider`、`content`、`path?`，全部为字符串类型（`whenToUse`/`path` 可选）。
 优先级：`RUNTIME_RANK = 250`、`BUNDLED_SKILL_RANK = 600`（数值语义待确认）。
 
+## 已确认（子 agent 调研 + 本机核对）
+
+- **服务名 = `ctx.skills`**（`@deepseek-ai/dsh-skill`，dsh-base 的 cordis.patch.yml 已装载）；
+- **运行期注册**：`ctx.skills.register({ name, description, content, ... })` → 返回 fiber 级 disposer，卸载即移除；
+  `invocation` 缺省 = 模型与用户均可调用；同层同名先到先得；
+- **provider 注册**：`ctx.skills.registerProvider(create)`，`create(control)` 返回 `{ name, list, get }`，`control = { signal, invalidate }`（无 TTL）；
+- **磁盘 root 与优先级**：项目 `.dsh/skills`(100) → `.agents/skills`(200) → `customSkillDirs`(300) → `<dshHome>/skills`(400) → `~/.agents/skills`(500) → bundled(600)；
+- 文件格式：`<name>/SKILL.md` 或 `<name>.md`（只扫一层），frontmatter 必填 `name`(kebab) / `description`，可选 `whenToUse` / `metadata` / `disable-model-invocation` / `user-invocable`。
+
 ## 仍未确认（下一步要落实）
 
 1. **服务注入名**：是 `skill` 还是 `skills`（本机测试用两路兜底）；

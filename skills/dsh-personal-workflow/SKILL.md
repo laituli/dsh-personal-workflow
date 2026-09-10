@@ -56,3 +56,30 @@ node scripts\e2e-restore-headless.mjs   # 免 LLM 的隔离端到端（按仓内
 1. **Windows 句柄**：恢复/改名整个数据目录前，先关掉自己持有的日志句柄并等端口释放，否则 `EPERM`。
 2. **自解释失败**：把底层英文错误翻译成“原因 + 下一步”，不要暴露 `exit=128: fatal: ...`。
 3. **任务看板**：`~/.dsh/task-board/ledger-v2.json` 的权威状态在插件进程内，**外部直接改会被回写覆盖**；受支持的更新途径见 `docs/taskboard-interface.md`（无则只能 UI 操作）。
+
+## 任务看板（task-board）
+
+实现包：`@linxin666/dsh-client-ui-task-board@0.3.18`（宿主 `lib/index.js`，客户端 `lib/client.js`）。
+宿主**没有 RPC、没有 CLI、没有 agent 工具**；唯一对外面是三条 HTTP（需回环 + 同源 `Origin`）：
+
+- `GET  /api/task-board/state` —— 读账本
+- `POST /api/task-board/action` —— 唯一受支持的外部**写**入口（envelope: requestId/action/initiator；requestId+sha256 指纹幂等）
+- `GET  /api/task-board/events` —— SSE 事件流
+
+### 硬结论：没有受支持的方式把任务标成 done
+
+- `move` 的目标域只有 `backlog` / `todo`；`update` 的 patch 不含 status；`create` 恒为 todo；
+- `done` / `failed` **只能由真实执行结算（settleExecution）产生**；UI 也标不了；
+- 唯一能直接写 done 的是 `import`（v1 迁移旁路，**未公开契约**）——不要据此写自动化。
+
+### 不要直接改 `~/.dsh/task-board/ledger-v2.json`
+
+宿主**只在启动时读盘一次**，之后内存为权威；任何一次 commit（action、cron、5s 轮询结算、调度修复）都会原子覆盖整个文件，**没有 revision 校验/合并**。
+实测：宿主内存 rev24/7 任务 vs 磁盘 rev25/9 任务 → 磁盘那份会被下次 commit 丢弃。
+（`revision` 只用于通知与客户端防回退；`ledger-v2.lock` 是单写者独占锁。）
+
+### agent 能做什么
+
+- **没有工具、没有斜杠命令**（明确结论）；系统提示里的 `plugin:task-board` 段受 `announceToAgent` 控制，默认 false；
+- 因此：进度跟踪要么由**真实执行**驱动（跑任务 → 结算），要么**由人用 UI**操作；
+- 需要程序化读取时，可自备 HTTP：`GET $env:DSH_WEB_URL/api/task-board/state`，并带上 `Origin: $env:DSH_WEB_URL`。
