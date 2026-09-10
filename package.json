@@ -1,0 +1,31 @@
+{
+  "name": "dsh-personal-workflow",
+  "version": "0.1.0",
+  "description": "laituli 个人工作流插件：把「自定义 dsh / dsh 插件开发的工作流」以 skill 形式热注入给 agent（装载即注入，卸载即移除）。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "skills",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/laituli/dsh-personal-workflow.git"
+  }
+}
