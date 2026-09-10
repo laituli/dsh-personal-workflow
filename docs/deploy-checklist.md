@@ -1,54 +1,83 @@
-# 部署清单（三个包 + 一次冷重启）
+# 部署清单（URL#tag 形态；跨机器冷启动规范）
 
-> 适用：把 `dsh-backup 0.11.6`、`dsh-stable-network 0.1.0`、`dsh-personal-workflow 0.1.0` 装进
-> `web` profile 并生效。**宿主侧插件只在启动时装配 → 必须冷重启一次**（客户端产物只需 F5）。
+> 规范：**安装源必须是可跨机器解析的 git URL**（`https://github.com/<owner>/<repo>.git#<tag>`），
+> 插件位于子目录时再追加 `&path:/<sub/dir>`。本地 `%TEMP%` 里的 tarball **只能作为离线兜底**，
+> 因为它换一台机器就不存在，不符合冷启动要求。
 
-## 0. 前置：产物就绪（已由开发侧完成）
+## 0. 目标产物与对应 tag（已推送）
 
-| 包 | 产物 | 位置 |
-|---|---|---|
-| dsh-backup | `xiaoyuyu6420-dsh-backup-0.11.6.tgz`（197 KB） | `%TEMP%\dsh-pack\`（如需长期保存请复制到备份目录或仓库附件） |
-| dsh-stable-network | `dsh-stable-network-0.1.0.tgz`（8.7 KB） | 同上 |
-| dsh-personal-workflow | `dsh-personal-workflow-0.1.0.tgz`（7.5 KB） | 同上 |
+| 插件 | 版本 | 安装引用（跨机器可解析） | 仓可见性 |
+|---|---|---|---|
+| dsh-backup | 0.11.6 | `https://github.com/laituli/dsh-backup.git#v0.11.6` | **public** |
+| dsh-stable-network | 0.1.1 | `https://github.com/laituli/dsh-stable-network.git#v0.1.1` | private（需凭据） |
+| dsh-personal-workflow | 0.1.0 | `https://github.com/laituli/dsh-personal-workflow.git#v0.1.0` | private（需凭据） |
 
-## 1. 安装（PowerShell，一次粘贴）
+> 私仓在**新机器**上需要先有凭据：`gh auth login`（本机已登录 laituli）或
+> `git config --global credential.helper store` + 写入 PAT。
+> 若希望“零凭据冷启动”，把这几个仓设为 public（内容不含凭据）。
+
+## 1. 安装（任选一种，均跨机器可复现）
+
+### 1.1 git URL + tag（**推荐**）
+
+```powershell
+dsh plugin --profile web add "https://github.com/laituli/dsh-backup.git#v0.11.6"
+dsh plugin --profile web add "https://github.com/laituli/dsh-stable-network.git#v0.1.1"
+dsh plugin --profile web add "https://github.com/laituli/dsh-personal-workflow.git#v0.1.0"
+```
+
+### 1.2 离线兜底（仅本机已有产物时）
 
 ```powershell
 $pack = "$env:TEMP\dsh-pack"
 dsh plugin --profile web add "$pack\xiaoyuyu6420-dsh-backup-0.11.6.tgz"
-dsh plugin --profile web add "$pack\dsh-stable-network-0.1.0.tgz"
+dsh plugin --profile web add "$pack\dsh-stable-network-0.1.1.tgz"
 dsh plugin --profile web add "$pack\dsh-personal-workflow-0.1.0.tgz"
 ```
 
-> 也可以走 git URL（等价、且灾时更可取）：
-> `dsh plugin --profile web add https://github.com/laituli/dsh-stable-network.git` 等。
-
-## 2. 冷重启（成对指令；先停旧、再启新）
+## 2. 冷重启（宿主侧插件只在启动时装配）
 
 ```powershell
 node "C:\Users\lai\Desktop\dsh-backups\ops.mjs" stop --web-port 3080
 & "C:\Program Files\nodejs\node.exe" "C:\Users\lai\AppData\Roaming\npm\node_modules\@deepseek-ai\dsh\lib\bin.js" web
 ```
 
-（第二行的窗口保持打开——它就是宿主；想不自动弹浏览器加 `--no-open`。）
+（第二行的窗口保持打开——它就是宿主；`--no-open` 可禁用自动开浏览器。）
 
 ## 3. 部署后验证
 
-1. 浏览器 **Ctrl+F5**；设置 → **运维** 应有五个子页（备份 | 重启 | 升级 | 迁移 | 重装/安装），文档为 Markdown、代码块可复制；
-2. 备份总览里应出现「**网络超时（秒）**」与「**刚性完成窗口（秒）**」两个输入；
-3. 新开会话，用 skill 工具确认 `dsh-personal-workflow` 可见（**热注入生效**）；
-4. `curl http://127.0.0.1:3080/dsh-stable-network/status` 应返回 `online/consecutiveFails/pending/nextProbeAt`；
-5. 点一次「④ 建议：立即备份（重启后）」——让备份目录里的 `rescue.mjs`/`ops.mjs` 刷新到当前版本。
+1. Ctrl+F5 → 设置 → **运维**：五个子页（备份 | 重启 | 升级 | 迁移 | 重装/安装），Markdown 渲染、代码块可复制；
+2. 备份总览出现「网络超时（秒）」「刚性完成窗口（秒）」；
+3. 新会话用 skill 工具能看到 `dsh-personal-workflow`（热注入，非共享目录）；
+4. `curl http://127.0.0.1:3080/dsh-stable-network/status` → `online/consecutiveFails/pending/nextProbeAt`；
+5. 点一次「④ 建议：立即备份（重启后）」。
 
-## 4. 回滚
+## 4. 从 0 装一台新机器（冷启动顺序）
+
+```powershell
+# ① 装 dsh 本体（按你的安装方式；npm 全局为例）
+npm i -g @deepseek-ai/dsh@latest
+# ② 凭据（私仓需要；public 可跳过）
+gh auth login
+# ③ 装我们配置的插件（与上面 1.1 相同的 URL#tag）
+dsh plugin --profile web add "https://github.com/laituli/dsh-backup.git#v0.11.6"
+dsh plugin --profile web add "https://github.com/laituli/dsh-stable-network.git#v0.1.1"
+dsh plugin --profile web add "https://github.com/laituli/dsh-personal-workflow.git#v0.1.0"
+# ④ 启动（首次即冷启动）
+dsh web
+```
+
+> 「运维 → 重装/安装」页的目标就是把上面 ③（以及 profile 里实际配置的插件清单）**自动生成**成可复制指令——
+> 这是下一步要落的 `installPlan`。
+
+## 5. 回滚
 
 - 插件级：`dsh plugin --profile web remove <包名>` + 冷重启；
-- 数据级：面板「运维 → 备份」里选一份归档恢复（旧数据会挪到 `.dsh.pre-restore-*`，不删除）。
+- 版本级：把 `#vX.Y.Z` 换成旧 tag 重装 + 冷重启；
+- 数据级：面板「运维 → 备份」选归档恢复（旧数据挪到 `.dsh.pre-restore-*`，不删除）。
 
-## 5. 已知边界
+## 6. 已知边界
 
-- `dsh-backup` 的「刚性完成」只在**网络类动作**（fetch/push/pull）上生效；窗口内重试到成功，
-  窗口用尽仍失败才报错（`githubRetryWindowSec=0` 可关闭重试）；
-- `dsh-stable-network` 目前是**宿主侧**（探测/熔断/队列/镜像源信息），前端状态点尚未接入（下一切片）；
-- `dsh-personal-workflow` 的 skill 注入走 `ctx.skills.registerProvider`，注册随 fiber 生命周期——
-  卸载插件即移除（不是写进共享的 `<DSH_HOME>/skills`）。
+- 宿主侧重试策略无“时间窗”字段：默认 30 分钟窗口用 `maxRetries=64 / 1000ms / 30000ms` 近似；
+- `dsh-stable-network` 目前只有宿主侧能力，前端状态点未接入；
+- 两个新仓为 private：跨机器冷启动需要凭据（或改为 public）。
