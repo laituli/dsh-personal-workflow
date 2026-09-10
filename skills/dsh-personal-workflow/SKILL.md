@@ -56,6 +56,10 @@ node scripts\e2e-restore-headless.mjs   # 免 LLM 的隔离端到端（按仓内
 1. **Windows 句柄**：恢复/改名整个数据目录前，先关掉自己持有的日志句柄并等端口释放，否则 `EPERM`。
 2. **自解释失败**：把底层英文错误翻译成“原因 + 下一步”，不要暴露 `exit=128: fatal: ...`。
 3. **任务看板**：`~/.dsh/task-board/ledger-v2.json` 的权威状态在插件进程内，**外部直接改会被回写覆盖**；受支持的更新途径见 `docs/taskboard-interface.md`（无则只能 UI 操作）。
+4. **备份目的地切换（跨根状态泄漏）**：运行时状态（`<备份根>/auto.json`：GitHub 仓库/凭据/上次推送）属于**该根**。切目的地（settings.destination）后若仍持有旧根状态，新根的内容会被推到旧根配置的远端——实测无头验证环境把临时 home 往用户真实仓库推。规矩：目的地一变就作废旧状态并重读新根（dsh-backup 0.11.8 的 `adoptRuntimeStateRoot()`）。
+5. **刚性重试必须可见**：网络动作设为“窗口内重试到成功”后，面板会出现最长 30 分钟的无反馈等待——这正是最初那个“按钮转圈、列表无变化”的 bug 形态。规矩：重试进度（第 N 次/已用/窗口/下次/最近错误）写进 status 并在 UI 显示，同时给“取消本次同步”（用户主动中止 ≠ 策略降级）。
+6. **无头 E2E 别直连开发仓**：开发仓 `node_modules` 里常有 smoke 桩（`@deepseek-ai/dsh-tools@0.0.0-smoke-stub`），直连时插件在真宿主里注册不上（端点报 `active Service ... is unavailable`）。规矩：把工作树发布文件放进临时包，`node_modules` junction 到**商店已解析好的 peer 目录**（`<.pnpm>/<pkg>/node_modules`）。
+7. **隔离验证必须防污染**：无头 E2E 先断言“目的地已切到隔离目录”“运行时仓库为空”，不满足就**中止后续步骤**（而不是继续跑），否则真实备份根/真实 GitHub 仓库会被写脏。
 
 ## 任务看板（task-board）
 
